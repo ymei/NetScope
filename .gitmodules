@@ -1,0 +1,3 @@
+[submodule "fifo"]
+	path = fifo
+	url = https://github.com/wowus/pipe.git
