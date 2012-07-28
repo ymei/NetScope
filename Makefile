@@ -1,11 +1,11 @@
 CC=clang
-CFLAGS=-Wall -std=c99 -DDEBUG
+CFLAGS=-Wall -std=c99 -O2 -DDEBUG
 INCLUDE=-I/opt/local/include -I./fifo
 LIBS=-L/opt/local/lib -lpthread -lhdf5
 
 .PHONY: all clean
 all: dpo5054 wavedump
-dpo5054: main.c hdf5io.o
+dpo5054: main.c hdf5io.o pipe.o
 	$(CC) $(CFLAGS) $(INCLUDE) $^ $(LIBS) $(LDFLAGS) -o $@
 analyze_spe: analysis/analyze_spe.c hdf5io.o
 	$(CC) $(CFLAGS) $(INCLUDE) $^ $(LIBS) $(LDFLAGS) -o $@

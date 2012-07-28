@@ -62,6 +62,7 @@
 
 #include "waveform.h"
 #include "hdf5io.h"
+#include "pipe.h"
 
 #ifdef DEBUG
   #define debug_printf(fmt, ...) do { fprintf(stderr, fmt, ##__VA_ARGS__); fflush(stderr); \
@@ -79,6 +80,36 @@ static size_t nEvents;
 static struct hdf5io_waveform_file *waveformFile;
 static struct hdf5io_waveform_event waveformEvent;
 static struct waveform_attribute waveformAttr;
+
+static pipe_producer_t *pipeIn;
+static pipe_consumer_t *pipeOut;
+
+static volatile size_t iEvent = 0;
+static pthread_mutex_t iEventMutex;
+static void iEventIncLocked(void)
+{
+    pthread_mutex_lock(&iEventMutex);
+    iEvent++;
+    pthread_mutex_unlock(&iEventMutex);
+}
+static void prepare_pipe(void)
+{
+    pipe_t *p;
+
+    p = pipe_new(sizeof(char), 0 /* 256*1024*1024 */);
+//    pipe_reserve(PIPE_GENERIC(p), BUFSIZ);
+
+    pipeIn = pipe_producer_new(p);
+    pipeOut = pipe_consumer_new(p);
+
+    pipe_free(p);
+}
+
+static void cleanup_pipe(void)
+{
+    pipe_producer_free(pipeIn);
+    pipe_consumer_free(pipeOut);
+}
 
 #define MAXSLEEP 2
 static int connect_retry(int sockfd, const struct sockaddr *addr, socklen_t alen)
@@ -287,7 +318,7 @@ static void signal_kill_handler(int sig)
     exit(EXIT_SUCCESS);
 }
 
-static void *receive_and_save(void *arg)
+static void *receive_and_push(void *arg)
 {
     struct timeval tv = {
         .tv_sec = 10,
@@ -295,25 +326,22 @@ static void *receive_and_save(void *arg)
     };
     int sockfd, maxfd, nsel;
     fd_set rfd;
-    int fStartEvent, fEndEvent, fStartCh, fGetNDig, fGetRetChLen; /* flags of states */
-    size_t nDig, retChLen, iCh, iEvent, iRetChLen, i, j, wavBufN;
-    char ibuf[BUFSIZ], retChLenBuf[BUFSIZ];
-    ssize_t nr;
-    char *wavBuf;
+    char ibuf[BUFSIZ];
+    size_t i;
+    volatile size_t iEventPrev;
+    ssize_t nr, nw;
 
-/*
     FILE *fp;
     if((fp=fopen("log.txt", "w"))==NULL) {
         perror("log.txt");
         return (void*)NULL;
     }
-*/
-    sockfd = *((int*)arg);
-    wavBufN = waveformAttr.nPt * nCh;
-    wavBuf = (char*)malloc(wavBufN * sizeof(char));
 
-    iCh = 0; iEvent = 0; j = 0;
-    fStartEvent = 1; fEndEvent = 0; fStartCh = 0; fGetNDig = 0; fGetRetChLen = 0;
+    sockfd = *((int*)arg);
+    strlcpy(ibuf, "curve?\n", sizeof(ibuf));
+    nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
+
+    iEventPrev = 0;
     for(;;) {
         FD_ZERO(&rfd);
         FD_SET(sockfd, &rfd);
@@ -328,75 +356,126 @@ static void *receive_and_save(void *arg)
         }
         if(nsel>0 && FD_ISSET(sockfd, &rfd)) {
             nr = read(sockfd, ibuf, sizeof(ibuf));
-            // write(fileno(fp), ibuf, nr);
-            for(i=0; i<nr; i++) {
-                if(fStartEvent) {
-                    printf("iEvent = %zd, ", iEvent);
-                    iCh = 0;
-                    j = 0;
-                    fStartEvent = 0;
-                    fStartCh = 1;
-                    i--; continue;
-                } else if(fEndEvent) {
-                    if(ibuf[i] == ';') { /* ';' only appears in curvestream? mode */
-                        continue;
-                    } else if(ibuf[i] == '\n') {
-                        // debug_printf("iEvent = %zd\n", iEvent);
-                        printf("\n");
-                        fflush(stdout);
-                        fEndEvent = 0;
-                        fStartEvent = 1;
+            if(nr < 0) {
+                warn("read");
+                break;
+            }
+            write(fileno(fp), ibuf, nr);
+            pipe_push(pipeIn, ibuf, nr);
+            printf("%zd pushed.\n", nr);
+        }
+//        pthread_mutex_lock(&iEventMutex);
+        if(iEvent >= nEvents) {
+//            pthread_mutex_unlock(&iEventMutex);
+            goto end;
+        }
+        if(iEvent > iEventPrev) {
+            printf("iEvent = %zd\n", iEvent);
+            fflush(stdout);
+            iEventPrev = iEvent;
+            strlcpy(ibuf, "curve?\n", sizeof(ibuf));
+            nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
+        }
+//        pthread_mutex_unlock(&iEventMutex);
+    }
+end:
 
-                        if(iEvent < nEvents-1) {
-                            strlcpy(retChLenBuf, "curve?\n", sizeof(retChLenBuf));
-                            write(sockfd, retChLenBuf, strnlen(retChLenBuf, sizeof(retChLenBuf)));
-                        } /* request next event before writing the
-                           * current event to file may boost data rate
-                           * a bit */
-                        waveformEvent.wavBuf = wavBuf;
-                        waveformEvent.eventId = iEvent;
-                        hdf5io_write_event(waveformFile, &waveformEvent);
-                        iEvent++;
-                        if(iEvent >= nEvents) {
-                            printf("\n");
-                            goto end;
+    fclose(fp);
+    return (void*)NULL;
+}
+
+static void *pop_and_save(void *arg)
+{
+    int fStartEvent, fEndEvent, fStartCh, fGetNDig, fGetRetChLen; /* flags of states */
+    size_t nDig, retChLen, iCh, iRetChLen, i, j, wavBufN;
+    char ibuf[BUFSIZ], retChLenBuf[BUFSIZ];
+    ssize_t nr;
+    char *wavBuf;
+
+    FILE *fp;
+    if((fp=fopen("log1.txt", "w"))==NULL) {
+        perror("log1.txt");
+        return (void*)NULL;
+    }
+
+    wavBufN = waveformAttr.nPt * nCh;
+    wavBuf = (char*)malloc(wavBufN * sizeof(char));
+
+    iCh = 0; j = 0;
+    fStartEvent = 1; fEndEvent = 0; fStartCh = 0; fGetNDig = 0; fGetRetChLen = 0;
+    for(;;) {
+        nr = pipe_pop(pipeOut, ibuf, sizeof(ibuf));
+//        printf("%zd popped.\n", nr);
+//        fflush(stdout);
+        write(fileno(fp), ibuf, nr);
+
+        if(nr == 0) break; /* there will be nothing from the pipe any more */
+        for(i=0; i<nr; i++) {
+            if(fStartEvent) {
+                printf("iEvent = %zd, ", iEvent);
+                iCh = 0;
+                j = 0;
+                fStartEvent = 0;
+                fStartCh = 1;
+                i--; continue;
+            } else if(fEndEvent) {
+                if(ibuf[i] == ';') { /* ';' only appears in curvestream? mode */
+                    continue;
+                } else if(ibuf[i] == '\n') {
+                    // debug_printf("iEvent = %zd\n", iEvent);
+                    printf("\n");
+                    fflush(stdout);
+                    fEndEvent = 0;
+                    fStartEvent = 1;
+
+                    if(iEvent < nEvents-1) {
+                    } /* request next event before writing the
+                       * current event to file may boost data rate
+                       * a bit */
+                    waveformEvent.wavBuf = wavBuf;
+                    waveformEvent.eventId = iEvent;
+                    hdf5io_write_event(waveformFile, &waveformEvent);
+                    iEventIncLocked();
+                    if(iEvent >= nEvents) {
+                        printf("\n");
+                        goto end;
+                    }
+                }
+            } else {
+                if(fStartCh) {
+                    if(ibuf[i] == '#') {
+                        fGetNDig = 1;
+                        continue;
+                    } else if(fGetNDig) {
+                        retChLenBuf[0] = ibuf[i];
+                        retChLenBuf[1] = '\0';
+                        nDig = atol(retChLenBuf);
+                        printf("nDig = %zd, ", nDig);
+                        
+                        iRetChLen = 0;
+                        fGetNDig = 0;
+                        continue;
+                    } else {
+                        retChLenBuf[iRetChLen] = ibuf[i];
+                        iRetChLen++;
+                        if(iRetChLen >= nDig) {
+                            retChLenBuf[iRetChLen] = '\0';
+                            retChLen = atol(retChLenBuf);
+                            printf("iRetChLen = %zd, retChLen = %zd, ",
+                                   iRetChLen, retChLen);
+                            fStartCh = 0;
+                            continue;
                         }
                     }
                 } else {
-                    if(fStartCh) {
-                        if(ibuf[i] == '#') {
-                            fGetNDig = 1;
-                            continue;
-                        } else if(fGetNDig) {
-                            retChLenBuf[0] = ibuf[i];
-                            retChLenBuf[1] = '\0';
-                            nDig = atol(retChLenBuf);
-                            printf("nDig = %zd, ", nDig);
-                            iRetChLen = 0;
-                            fGetNDig = 0;
-                            continue;
-                        } else {
-                            retChLenBuf[iRetChLen] = ibuf[i];
-                            iRetChLen++;
-                            if(iRetChLen >= nDig) {
-                                retChLenBuf[iRetChLen] = '\0';
-                                retChLen = atol(retChLenBuf);
-                                printf("iRetChLen = %zd, retChLen = %zd, ",
-                                       iRetChLen, retChLen);
-                                fStartCh = 0;
-                                continue;
-                            }
-                        }
-                    } else {
-                        wavBuf[j] = ibuf[i];
-                        j++;
-                        if((j % waveformAttr.nPt) == 0 && (j!=0)) {
-                            printf("iCh = %zd, ", iCh);
-                            iCh++;
-                            fStartCh = 1;
-                            if(iCh >= nCh) {
-                                fEndEvent = 1;
-                            }
+                    wavBuf[j] = ibuf[i];
+                    j++;
+                    if((j % waveformAttr.nPt) == 0 && (j!=0)) {
+                        printf("iCh = %zd, ", iCh);
+                        iCh++;
+                        fStartCh = 1;
+                        if(iCh >= nCh) {
+                            fEndEvent = 1;
                         }
                     }
                 }
@@ -404,36 +483,17 @@ static void *receive_and_save(void *arg)
         }
     }
 end:
-/*
-    while((nr = read(sockfd, ibuf, sizeof(ibuf)-1))>0) {
-        ibuf[nr] = '\0';
-        if(nr < sizeof(ibuf)-1) {
-            printf("\nThread: %p: %d:\n", pthread_self(), ++i);
-        }
-        // printf("%s", ibuf);
-        write(fileno(fp), ibuf, nr);
-        fflush(fp);
-        printf("ret: %zd ", nr);
-        fflush(stdout);
-    }
-    if(nr < 0) {
-        warn("Thread: %p: read", pthread_self());
-        fflush(stderr);
-    }
-*/
     free(wavBuf);
-//    fclose(fp);
+    fclose(fp);
     return (void*)NULL;
 }
 
 int main(int argc, char **argv)
 {
-    char ibuf[BUFSIZ];
     char *p, *outFileName, *scopeAddress, *scopePort;
     unsigned int v, c;
     int sockfd;
-    pthread_t rTid, wTid;
-    ssize_t nw;
+    pthread_t wTid;
     size_t nwreq, nWfmPerChunk = 100;
 
     if(argc<6) {
@@ -468,20 +528,21 @@ int main(int argc, char **argv)
     }
 
     prepare_scope(sockfd, &waveformAttr);
+    prepare_pipe();
+    pthread_mutex_init(&iEventMutex, NULL);
     waveformFile = hdf5io_open_file(outFileName, nWfmPerChunk, nCh);
     hdf5io_write_waveform_attribute_in_file_header(waveformFile, &waveformAttr);
 
     signal(SIGKILL, signal_kill_handler);
     signal(SIGINT, signal_kill_handler);
 
+    pthread_create(&wTid, NULL, pop_and_save, &sockfd);
+
     printf("start time = %zd\n", time(NULL));
 
-    strlcpy(ibuf, "curve?\n", sizeof(ibuf));
-    nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
-    receive_and_save(&sockfd);
-/*    
-    pthread_create(&rTid, NULL, receive_and_save, &sockfd);
+    receive_and_push(&sockfd);
 
+/*
     do {
         fgets(ibuf, sizeof(ibuf), stdin);
         nwreq = strnlen(ibuf, sizeof(ibuf));
@@ -499,6 +560,8 @@ int main(int argc, char **argv)
 */
     printf("\nstop time  = %zd\n", time(NULL));
 
+    pthread_mutex_destroy(&iEventMutex);
+    cleanup_pipe();
     close(sockfd);
     atexit_flush_files();
     return EXIT_SUCCESS;
