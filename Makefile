@@ -1,5 +1,5 @@
 CC=clang
-CFLAGS=-Wall -std=c99 -DDEBUG
+CFLAGS=-Wall -std=c99 -O2
 INCLUDE=-I/opt/local/include -I./fifo
 LIBS=-L/opt/local/lib -lpthread -lhdf5
 

@@ -58,7 +58,7 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-#include <pthread.h>
+#include <time.h>
 
 #include "waveform.h"
 #include "hdf5io.h"
@@ -298,7 +298,7 @@ static void *receive_and_save(void *arg)
     int fStartEvent, fEndEvent, fStartCh, fGetNDig, fGetRetChLen; /* flags of states */
     size_t nDig, retChLen, iCh, iEvent, iRetChLen, i, j, wavBufN;
     char ibuf[BUFSIZ], retChLenBuf[BUFSIZ];
-    ssize_t nr;
+    ssize_t nr, nw;
     char *wavBuf;
 
 /*
@@ -309,6 +309,10 @@ static void *receive_and_save(void *arg)
     }
 */
     sockfd = *((int*)arg);
+
+    strlcpy(ibuf, "curve?\n", sizeof(ibuf));
+    nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
+
     wavBufN = waveformAttr.nPt * nCh;
     wavBuf = (char*)malloc(wavBufN * sizeof(char));
 
@@ -428,13 +432,10 @@ end:
 
 int main(int argc, char **argv)
 {
-    char ibuf[BUFSIZ];
     char *p, *outFileName, *scopeAddress, *scopePort;
     unsigned int v, c;
     int sockfd;
-    pthread_t rTid, wTid;
-    ssize_t nw;
-    size_t nwreq, nWfmPerChunk = 100;
+    size_t nWfmPerChunk = 100;
 
     if(argc<6) {
         error_printf("%s scopeAdddress scopePort outFileName chMask(0x..) nEvents nWfmPerChunk\n",
@@ -476,8 +477,6 @@ int main(int argc, char **argv)
 
     printf("start time = %zd\n", time(NULL));
 
-    strlcpy(ibuf, "curve?\n", sizeof(ibuf));
-    nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
     receive_and_save(&sockfd);
 /*    
     pthread_create(&rTid, NULL, receive_and_save, &sockfd);
