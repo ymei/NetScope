@@ -62,7 +62,7 @@
 
 #include "waveform.h"
 #include "hdf5io.h"
-#include "pipe.h"
+#include "fifo.h"
 
 #ifdef DEBUG
   #define debug_printf(fmt, ...) do { fprintf(stderr, fmt, ##__VA_ARGS__); fflush(stderr); \
@@ -81,8 +81,8 @@ static struct hdf5io_waveform_file *waveformFile;
 static struct hdf5io_waveform_event waveformEvent;
 static struct waveform_attribute waveformAttr;
 
-static pipe_producer_t *pipeIn;
-static pipe_consumer_t *pipeOut;
+#define FIFO_SIZE (50*1024*1024)
+static struct fifo_t *fifo;
 
 static volatile size_t iEvent = 0;
 static pthread_mutex_t iEventMutex;
@@ -91,24 +91,6 @@ static void iEventIncLocked(void)
     pthread_mutex_lock(&iEventMutex);
     iEvent++;
     pthread_mutex_unlock(&iEventMutex);
-}
-static void prepare_pipe(void)
-{
-    pipe_t *p;
-
-    p = pipe_new(sizeof(char), 0 /* 256*1024*1024 */);
-//    pipe_reserve(PIPE_GENERIC(p), BUFSIZ);
-
-    pipeIn = pipe_producer_new(p);
-    pipeOut = pipe_consumer_new(p);
-
-    pipe_free(p);
-}
-
-static void cleanup_pipe(void)
-{
-    pipe_producer_free(pipeIn);
-    pipe_consumer_free(pipeOut);
 }
 
 #define MAXSLEEP 2
@@ -327,7 +309,6 @@ static void *receive_and_push(void *arg)
     int sockfd, maxfd, nsel;
     fd_set rfd;
     char ibuf[BUFSIZ];
-    size_t i;
     volatile size_t iEventPrev;
     ssize_t nr, nw;
 
@@ -361,7 +342,7 @@ static void *receive_and_push(void *arg)
                 break;
             }
             write(fileno(fp), ibuf, nr);
-            pipe_push(pipeIn, ibuf, nr);
+            fifo_push(fifo, ibuf, nr);
             printf("%zd pushed.\n", nr);
         }
 //        pthread_mutex_lock(&iEventMutex);
@@ -389,7 +370,7 @@ static void *pop_and_save(void *arg)
     int fStartEvent, fEndEvent, fStartCh, fGetNDig, fGetRetChLen; /* flags of states */
     size_t nDig, retChLen, iCh, iRetChLen, i, j, wavBufN;
     char ibuf[BUFSIZ], retChLenBuf[BUFSIZ];
-    ssize_t nr;
+    size_t nr;
     char *wavBuf;
 
     FILE *fp;
@@ -404,12 +385,12 @@ static void *pop_and_save(void *arg)
     iCh = 0; j = 0;
     fStartEvent = 1; fEndEvent = 0; fStartCh = 0; fGetNDig = 0; fGetRetChLen = 0;
     for(;;) {
-        nr = pipe_pop(pipeOut, ibuf, sizeof(ibuf));
+        nr = fifo_pop(fifo, ibuf, sizeof(ibuf));
 //        printf("%zd popped.\n", nr);
 //        fflush(stdout);
         write(fileno(fp), ibuf, nr);
 
-        if(nr == 0) break; /* there will be nothing from the pipe any more */
+        if(nr == 0) break; /* there will be nothing from the fifo any more */
         for(i=0; i<nr; i++) {
             if(fStartEvent) {
                 printf("iEvent = %zd, ", iEvent);
@@ -494,7 +475,7 @@ int main(int argc, char **argv)
     unsigned int v, c;
     int sockfd;
     pthread_t wTid;
-    size_t nwreq, nWfmPerChunk = 100;
+    size_t nWfmPerChunk = 100;
 
     if(argc<6) {
         error_printf("%s scopeAdddress scopePort outFileName chMask(0x..) nEvents nWfmPerChunk\n",
@@ -528,7 +509,7 @@ int main(int argc, char **argv)
     }
 
     prepare_scope(sockfd, &waveformAttr);
-    prepare_pipe();
+    fifo = fifo_init(FIFO_SIZE);
     pthread_mutex_init(&iEventMutex, NULL);
     waveformFile = hdf5io_open_file(outFileName, nWfmPerChunk, nCh);
     hdf5io_write_waveform_attribute_in_file_header(waveformFile, &waveformAttr);
@@ -561,7 +542,7 @@ int main(int argc, char **argv)
     printf("\nstop time  = %zd\n", time(NULL));
 
     pthread_mutex_destroy(&iEventMutex);
-    cleanup_pipe();
+    fifo_close(fifo);
     close(sockfd);
     atexit_flush_files();
     return EXIT_SUCCESS;
