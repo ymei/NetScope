@@ -81,7 +81,7 @@ static struct hdf5io_waveform_file *waveformFile;
 static struct hdf5io_waveform_event waveformEvent;
 static struct waveform_attribute waveformAttr;
 
-#define FIFO_SIZE (50*1024*1024)
+#define FIFO_SIZE (128*1024*1024)
 static struct fifo_t *fifo;
 
 static volatile size_t iEvent = 0;
@@ -311,13 +311,13 @@ static void *receive_and_push(void *arg)
     char ibuf[BUFSIZ];
     volatile size_t iEventPrev;
     ssize_t nr, nw;
-
+/*
     FILE *fp;
     if((fp=fopen("log.txt", "w"))==NULL) {
         perror("log.txt");
         return (void*)NULL;
     }
-
+*/
     sockfd = *((int*)arg);
     strlcpy(ibuf, "curve?\n", sizeof(ibuf));
     nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
@@ -341,9 +341,8 @@ static void *receive_and_push(void *arg)
                 warn("read");
                 break;
             }
-            write(fileno(fp), ibuf, nr);
+//            write(fileno(fp), ibuf, nr);
             fifo_push(fifo, ibuf, nr);
-            printf("%zd pushed.\n", nr);
         }
 //        pthread_mutex_lock(&iEventMutex);
         if(iEvent >= nEvents) {
@@ -351,8 +350,6 @@ static void *receive_and_push(void *arg)
             goto end;
         }
         if(iEvent > iEventPrev) {
-            printf("iEvent = %zd\n", iEvent);
-            fflush(stdout);
             iEventPrev = iEvent;
             strlcpy(ibuf, "curve?\n", sizeof(ibuf));
             nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
@@ -361,7 +358,7 @@ static void *receive_and_push(void *arg)
     }
 end:
 
-    fclose(fp);
+//    fclose(fp);
     return (void*)NULL;
 }
 
@@ -369,16 +366,16 @@ static void *pop_and_save(void *arg)
 {
     int fStartEvent, fEndEvent, fStartCh, fGetNDig, fGetRetChLen; /* flags of states */
     size_t nDig, retChLen, iCh, iRetChLen, i, j, wavBufN;
-    char ibuf[BUFSIZ], retChLenBuf[BUFSIZ];
+    char ibuf[4*BUFSIZ], retChLenBuf[BUFSIZ];
     size_t nr;
     char *wavBuf;
-
+/*
     FILE *fp;
     if((fp=fopen("log1.txt", "w"))==NULL) {
         perror("log1.txt");
         return (void*)NULL;
     }
-
+*/
     wavBufN = waveformAttr.nPt * nCh;
     wavBuf = (char*)malloc(wavBufN * sizeof(char));
 
@@ -388,7 +385,7 @@ static void *pop_and_save(void *arg)
         nr = fifo_pop(fifo, ibuf, sizeof(ibuf));
 //        printf("%zd popped.\n", nr);
 //        fflush(stdout);
-        write(fileno(fp), ibuf, nr);
+//        write(fileno(fp), ibuf, nr);
 
         if(nr == 0) break; /* there will be nothing from the fifo any more */
         for(i=0; i<nr; i++) {
@@ -465,7 +462,7 @@ static void *pop_and_save(void *arg)
     }
 end:
     free(wavBuf);
-    fclose(fp);
+//    fclose(fp);
     return (void*)NULL;
 }
 
