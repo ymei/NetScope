@@ -434,6 +434,7 @@ int main(int argc, char **argv)
 {
     char *p, *outFileName, *scopeAddress, *scopePort;
     unsigned int v, c;
+    time_t startTime;
     int sockfd;
     size_t nWfmPerChunk = 100;
 
@@ -475,7 +476,7 @@ int main(int argc, char **argv)
     signal(SIGKILL, signal_kill_handler);
     signal(SIGINT, signal_kill_handler);
 
-    printf("start time = %zd\n", time(NULL));
+    printf("start time = %zd\n", startTime = time(NULL));
 
     receive_and_save(&sockfd);
 /*    
@@ -496,7 +497,8 @@ int main(int argc, char **argv)
         write(STDIN_FILENO, ibuf, nw);
     } while (nw>=0);
 */
-    printf("\nstop time  = %zd\n", time(NULL));
+    printf("\nstart time = %zd\n", startTime);
+    printf("stop time  = %zd\n", time(NULL));
 
     close(sockfd);
     atexit_flush_files();
