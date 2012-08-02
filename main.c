@@ -303,8 +303,8 @@ static void signal_kill_handler(int sig)
 static void *receive_and_push(void *arg)
 {
     struct timeval tv = {
-        .tv_sec = 10,
-        .tv_usec = 0,
+        .tv_sec = 0,
+        .tv_usec = 1,
     };
     int sockfd, maxfd, nsel;
     fd_set rfd;
@@ -333,7 +333,7 @@ static void *receive_and_push(void *arg)
             break;
         }
         if(nsel == 0) {
-            warn("timed out");
+            // warn("timed out");
         }
         if(nsel>0 && FD_ISSET(sockfd, &rfd)) {
             nr = read(sockfd, ibuf, sizeof(ibuf));
@@ -406,14 +406,15 @@ static void *pop_and_save(void *arg)
                     fEndEvent = 0;
                     fStartEvent = 1;
 
-                    if(iEvent < nEvents-1) {
-                    } /* request next event before writing the
-                       * current event to file may boost data rate
-                       * a bit */
-                    waveformEvent.wavBuf = wavBuf;
-                    waveformEvent.eventId = iEvent;
-                    hdf5io_write_event(waveformFile, &waveformEvent);
+                    /* Will trigger next event query.  Requesting next
+                     * event before writing the current event to file
+                     * may boost data rate a bit */
                     iEventIncLocked();
+
+                    waveformEvent.wavBuf = wavBuf;
+                    waveformEvent.eventId = iEvent-1;
+                    hdf5io_write_event(waveformFile, &waveformEvent);
+
                     if(iEvent >= nEvents) {
                         printf("\n");
                         goto end;
@@ -470,6 +471,7 @@ int main(int argc, char **argv)
 {
     char *p, *outFileName, *scopeAddress, *scopePort;
     unsigned int v, c;
+    time_t startTime;
     int sockfd;
     pthread_t wTid;
     size_t nWfmPerChunk = 100;
@@ -516,7 +518,7 @@ int main(int argc, char **argv)
 
     pthread_create(&wTid, NULL, pop_and_save, &sockfd);
 
-    printf("start time = %zd\n", time(NULL));
+    printf("start time = %zd\n", startTime = time(NULL));
 
     receive_and_push(&sockfd);
 
@@ -536,8 +538,10 @@ int main(int argc, char **argv)
         write(STDIN_FILENO, ibuf, nw);
     } while (nw>=0);
 */
-    printf("\nstop time  = %zd\n", time(NULL));
+    printf("\nstart time = %zd\n", startTime);
+    printf("stop time  = %zd\n", time(NULL));
 
+    pthread_join(wTid, NULL);
     pthread_mutex_destroy(&iEventMutex);
     fifo_close(fifo);
     close(sockfd);
