@@ -303,8 +303,8 @@ static size_t raw_event_size(struct hdf5io_waveform_file *wavFile)
 static void *receive_and_push(void *arg)
 {
     struct timeval tv = {
-        .tv_sec = 0,
-        .tv_usec = 1,
+        .tv_sec = 10,
+        .tv_usec = 0,
     };
     int sockfd, maxfd, nsel;
     fd_set rfd;
@@ -334,7 +334,7 @@ static void *receive_and_push(void *arg)
             break;
         }
         if(nsel == 0) {
-            // warn("timed out");
+            warn("timed out");
         }
         if(nsel>0 && FD_ISSET(sockfd, &rfd)) {
             nr = read(sockfd, ibuf, sizeof(ibuf));
