@@ -81,17 +81,8 @@ static struct hdf5io_waveform_file *waveformFile;
 static struct hdf5io_waveform_event waveformEvent;
 static struct waveform_attribute waveformAttr;
 
-#define FIFO_SIZE (128*1024*1024)
+#define FIFO_SIZE (512*1024*1024)
 static struct fifo_t *fifo;
-
-static volatile size_t iEvent = 0;
-static pthread_mutex_t iEventMutex;
-static void iEventIncLocked(void)
-{
-    pthread_mutex_lock(&iEventMutex);
-    iEvent++;
-    pthread_mutex_unlock(&iEventMutex);
-}
 
 #define MAXSLEEP 2
 static int connect_retry(int sockfd, const struct sockaddr *addr, socklen_t alen)
@@ -300,6 +291,15 @@ static void signal_kill_handler(int sig)
     exit(EXIT_SUCCESS);
 }
 
+static size_t raw_event_size(struct hdf5io_waveform_file *wavFile)
+{
+    char buf[BUFSIZ];
+    size_t chHeaderSize;
+    
+    chHeaderSize = snprintf(buf, sizeof(buf), "#X%zd", wavFile->nPt);
+    return (chHeaderSize + wavFile->nPt) * wavFile->nCh + 1;
+}
+
 static void *receive_and_push(void *arg)
 {
     struct timeval tv = {
@@ -309,8 +309,8 @@ static void *receive_and_push(void *arg)
     int sockfd, maxfd, nsel;
     fd_set rfd;
     char ibuf[BUFSIZ];
-    volatile size_t iEventPrev;
-    ssize_t nr, nw;
+    size_t iEvent = 0;
+    ssize_t nr, nw, rawEventSize, readTotal;
 /*
     FILE *fp;
     if((fp=fopen("log.txt", "w"))==NULL) {
@@ -322,7 +322,8 @@ static void *receive_and_push(void *arg)
     strlcpy(ibuf, "curve?\n", sizeof(ibuf));
     nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
 
-    iEventPrev = 0;
+    rawEventSize = raw_event_size(waveformFile);
+    readTotal = 0;
     for(;;) {
         FD_ZERO(&rfd);
         FD_SET(sockfd, &rfd);
@@ -341,20 +342,19 @@ static void *receive_and_push(void *arg)
                 warn("read");
                 break;
             }
+            readTotal += nr;
 //            write(fileno(fp), ibuf, nr);
             fifo_push(fifo, ibuf, nr);
         }
-//        pthread_mutex_lock(&iEventMutex);
         if(iEvent >= nEvents) {
-//            pthread_mutex_unlock(&iEventMutex);
             goto end;
         }
-        if(iEvent > iEventPrev) {
-            iEventPrev = iEvent;
+        if(readTotal >= rawEventSize) {
+            readTotal = 0;
             strlcpy(ibuf, "curve?\n", sizeof(ibuf));
             nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
+            iEvent++;
         }
-//        pthread_mutex_unlock(&iEventMutex);
     }
 end:
 
@@ -368,6 +368,7 @@ static void *pop_and_save(void *arg)
     size_t nDig, retChLen, iCh, iRetChLen, i, j, wavBufN;
     char ibuf[4*BUFSIZ], retChLenBuf[BUFSIZ];
     size_t nr;
+    size_t iEvent = 0;
     char *wavBuf;
 /*
     FILE *fp;
@@ -409,7 +410,8 @@ static void *pop_and_save(void *arg)
                     /* Will trigger next event query.  Requesting next
                      * event before writing the current event to file
                      * may boost data rate a bit */
-                    iEventIncLocked();
+                    // iEventIncLocked();
+                    iEvent++;
 
                     waveformEvent.wavBuf = wavBuf;
                     waveformEvent.eventId = iEvent-1;
@@ -471,7 +473,7 @@ int main(int argc, char **argv)
 {
     char *p, *outFileName, *scopeAddress, *scopePort;
     unsigned int v, c;
-    time_t startTime;
+    time_t startTime, stopTime;
     int sockfd;
     pthread_t wTid;
     size_t nWfmPerChunk = 100;
@@ -509,7 +511,6 @@ int main(int argc, char **argv)
 
     prepare_scope(sockfd, &waveformAttr);
     fifo = fifo_init(FIFO_SIZE);
-    pthread_mutex_init(&iEventMutex, NULL);
     waveformFile = hdf5io_open_file(outFileName, nWfmPerChunk, nCh);
     hdf5io_write_waveform_attribute_in_file_header(waveformFile, &waveformAttr);
 
@@ -538,11 +539,13 @@ int main(int argc, char **argv)
         write(STDIN_FILENO, ibuf, nw);
     } while (nw>=0);
 */
-    printf("\nstart time = %zd\n", startTime);
-    printf("stop time  = %zd\n", time(NULL));
 
+    stopTime = time(NULL);
     pthread_join(wTid, NULL);
-    pthread_mutex_destroy(&iEventMutex);
+
+    printf("\nstart time = %zd\n", startTime);
+    printf("stop time  = %zd\n", stopTime);
+
     fifo_close(fifo);
     close(sockfd);
     atexit_flush_files();
