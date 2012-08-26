@@ -4,10 +4,10 @@ INCLUDE=-I/opt/local/include -I./fifo
 LIBS=-L/opt/local/lib -lpthread -lhdf5
 
 .PHONY: all clean
-all: dpo5054 wavedump
+all: dpo5054 wavedump analyze_pe
 dpo5054: main.c hdf5io.o fifo.o
 	$(CC) $(CFLAGS) $(INCLUDE) $^ $(LIBS) $(LDFLAGS) -o $@
-analyze_spe: analysis/analyze_spe.c hdf5io.o
+analyze_pe: analysis/analyze_pe.c hdf5io.o
 	$(CC) $(CFLAGS) $(INCLUDE) $^ $(LIBS) $(LDFLAGS) -o $@
 analyze_int: analysis/analyze_int.c hdf5io.o
 	$(CC) $(CFLAGS) $(INCLUDE) $^ $(LIBS) $(LDFLAGS) -o $@
