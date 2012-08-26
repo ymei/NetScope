@@ -319,7 +319,7 @@ static void *receive_and_push(void *arg)
     }
 */
     sockfd = *((int*)arg);
-    strlcpy(ibuf, "curve?\n", sizeof(ibuf));
+    strlcpy(ibuf, "CURVENext?\n", sizeof(ibuf));
     nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
 
     rawEventSize = raw_event_size(waveformFile);
@@ -351,7 +351,7 @@ static void *receive_and_push(void *arg)
         }
         if(readTotal >= rawEventSize) {
             readTotal = 0;
-            strlcpy(ibuf, "curve?\n", sizeof(ibuf));
+            strlcpy(ibuf, "CURVENext?\n", sizeof(ibuf));
             nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
             iEvent++;
         }
