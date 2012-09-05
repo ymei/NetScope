@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -O2 -DDEBUG
+CFLAGS=-m32 -Wall -O2 -DDEBUG
 INCLUDE=-I/opt/local/include -I.
 LIBS=-L/opt/local/lib -lpthread -lhdf5
 

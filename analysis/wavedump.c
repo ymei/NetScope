@@ -13,7 +13,7 @@ char *waveformBuf;
 
 int main(int argc, char **argv)
 {
-    size_t i, j, iCh, iEvent=0, nEvents=0, frameSize, nEventsInFile;
+    uint64_t i, j, iCh, iEvent=0, nEvents=0, frameSize, nEventsInFile;
     char *inFileName;
     
     struct hdf5io_waveform_file *waveformFile;
@@ -49,11 +49,11 @@ int main(int argc, char **argv)
             waveformAttr.yzero[1], waveformAttr.yzero[2], waveformAttr.yzero[3]);
 
     nEventsInFile = hdf5io_get_number_of_events(waveformFile);
-    fprintf(stderr, "Number of events in file: %zd\n", nEventsInFile);
+    fprintf(stderr, "Number of events in file: %lld\n", nEventsInFile);
     if(nEvents <= 0 || nEvents > nEventsInFile) nEvents = nEventsInFile;
     if(waveformAttr.nFrames > 0) {
         frameSize = waveformAttr.nPt / waveformAttr.nFrames;
-        fprintf(stderr, "Frame size: %zd\n", frameSize);
+        fprintf(stderr, "Frame size: %lld\n", frameSize);
     } else {
         frameSize = waveformAttr.nPt;
     }
