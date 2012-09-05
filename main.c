@@ -73,6 +73,13 @@
 #define error_printf(fmt, ...) do { fprintf(stderr, fmt, ##__VA_ARGS__); fflush(stderr); \
                                   } while(0)
 
+#ifndef strlcpy
+#define strlcpy(a, b, c) do { \
+    strncpy(a, b, (c)-1); \
+    (a)[(c)-1] = '\0'; \
+} while (0)
+#endif
+
 static unsigned int chMask;
 static size_t nCh;
 static size_t nEvents;
@@ -365,7 +372,7 @@ end:
 static void *pop_and_save(void *arg)
 {
     int fStartEvent, fEndEvent, fStartCh, fGetNDig, fGetRetChLen; /* flags of states */
-    size_t nDig, retChLen, iCh, iRetChLen, i, j, wavBufN;
+    size_t nDig=0, retChLen, iCh, iRetChLen=0, i, j, wavBufN;
     char ibuf[4*BUFSIZ], retChLenBuf[BUFSIZ];
     size_t nr;
     size_t iEvent = 0;
