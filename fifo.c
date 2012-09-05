@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <pthread.h>
 #include "fifo.h"
@@ -21,7 +22,7 @@
 #define MUTEX_SPINS 8192
 static void mutex_lock(pthread_mutex_t* m)
 {
-    size_t i;
+    uint64_t i;
     
     for(i = 0; i < MUTEX_SPINS; i++)
         if(pthread_mutex_trylock(m) == 0)
@@ -44,7 +45,7 @@ static void mutex_lock(pthread_mutex_t* m)
 #define cond_broadcast pthread_cond_broadcast
 #define cond_wait      pthread_cond_wait
 
-struct fifo_t *fifo_init(size_t n)
+struct fifo_t *fifo_init(uint64_t n)
 {
     struct fifo_t *fifo;
     fifo = (struct fifo_t*)malloc(sizeof(struct fifo_t));
@@ -76,9 +77,9 @@ int fifo_close(struct fifo_t *fifo)
     return -1;
 }
 
-ssize_t fifo_push(struct fifo_t *fifo, char *buf, size_t n)
+int64_t fifo_push(struct fifo_t *fifo, char *buf, uint64_t n)
 {
-    size_t ret = 0, rem;
+    uint64_t ret = 0, rem;
 
     if(n > (fifo->n - 1))
         return -1;
@@ -123,9 +124,9 @@ ssize_t fifo_push(struct fifo_t *fifo, char *buf, size_t n)
     return ret;
 }
 
-size_t fifo_pop(struct fifo_t *fifo, char *buf, size_t n)
+uint64_t fifo_pop(struct fifo_t *fifo, char *buf, uint64_t n)
 {
-    size_t ret = 0, toCopy, rem;
+    uint64_t ret = 0, toCopy, rem;
     WHILE_LOCKED(
         while(1) {
             if(fifo->tail < fifo->head) /* wrapped around */
@@ -162,7 +163,7 @@ size_t fifo_pop(struct fifo_t *fifo, char *buf, size_t n)
     return ret;
 }
 
-size_t fifo_nelements_in(struct fifo_t *fifo)
+uint64_t fifo_nelements_in(struct fifo_t *fifo)
 {
     WHILE_LOCKED(
         if(fifo->tail < fifo->head) { /* wrapped around */
@@ -179,13 +180,13 @@ static struct fifo_t *fifo;
 static void *pop_and_print(void *arg)
 {
     char ibuf[BUFSIZE];
-    size_t i, nr;
+    uint64_t i, nr;
     
     for(i=0;;i++) {
         nr = fifo_pop(fifo, ibuf, sizeof(ibuf));
         if(nr > 0) {
             write(STDOUT_FILENO, ibuf, nr);
-            printf("Thread %p, %zd, %zd popped.\n", pthread_self(), i, nr); fflush(stdout);
+            printf("Thread %p, %llu, %llu popped.\n", pthread_self(), i, nr); fflush(stdout);
         }
     }
     return (void*)NULL;
@@ -195,7 +196,7 @@ int main(int argc, char **argv)
 {
     char ibuf[BUFSIZE];
     pthread_t rTid;
-    ssize_t nw;
+    int64_t nw;
 
     fifo = fifo_init(8);
 
@@ -206,7 +207,7 @@ int main(int argc, char **argv)
         nw = strnlen(ibuf, BUFSIZE);
 //        write(STDOUT_FILENO, ibuf, nw);
         nw = fifo_push(fifo, ibuf, strnlen(ibuf, BUFSIZE));
-        printf("Thread %p, %zd pushed\n", pthread_self(), nw); fflush(stdout);
+        printf("Thread %p, %llu pushed\n", pthread_self(), nw); fflush(stdout);
     } while (nw>=0);
     
     fifo_close(fifo);

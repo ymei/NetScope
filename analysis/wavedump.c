@@ -35,8 +35,8 @@ int main(int argc, char **argv)
     hdf5io_read_waveform_attribute_in_file_header(waveformFile, &waveformAttr);
     fprintf(stderr, "waveform_attribute:\n"
             "     chMask  = 0x%02x\n"
-            "     nPt     = %zd\n"
-            "     nFrames = %zd\n"
+            "     nPt     = %lld\n"
+            "     nFrames = %lld\n"
             "     dt      = %g\n"
             "     t0      = %g\n"
             "     ymult   = %g %g %g %g\n"

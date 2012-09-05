@@ -7,8 +7,8 @@
 struct waveform_attribute 
 {
     unsigned int chMask;
-    size_t nPt; /* number of points in each event */
-    size_t nFrames; /* number of Fast Frames in each event, 0 means off */
+    uint64_t nPt; /* number of points in each event */
+    uint64_t nFrames; /* number of Fast Frames in each event, 0 means off */
     double dt;
     double t0;
     double ymult[SCOPE_NCH];

@@ -81,8 +81,8 @@
 #endif
 
 static unsigned int chMask;
-static size_t nCh;
-static size_t nEvents;
+static uint64_t nCh;
+static uint64_t nEvents;
 
 static struct hdf5io_waveform_file *waveformFile;
 static struct hdf5io_waveform_event waveformEvent;
@@ -162,8 +162,8 @@ static int query_response_with_timeout(int sockfd, char *queryStr, char *respStr
     int maxfd;
     fd_set rfd;
     int nsel;
-    ssize_t nr, nw;
-    size_t ret;
+    int64_t nr, nw;
+    uint64_t ret;
 
     nw = send(sockfd, queryStr, strnlen(queryStr, BUFSIZ), 0);
     if(nw<0) {
@@ -185,7 +185,7 @@ static int query_response_with_timeout(int sockfd, char *queryStr, char *respStr
         }
         if(nsel>0 && FD_ISSET(sockfd, &rfd)) {
             nr = read(sockfd, respStr+ret, BUFSIZ-ret);
-            // debug_printf("nr = %zd\n", nr);
+            // debug_printf("nr = %llu\n", nr);
             if(nr>0) {
                 ret += nr;
             } else {
@@ -238,13 +238,13 @@ static int prepare_scope(int sockfd, struct waveform_attribute *wavAttr)
 
     strlcpy(buf, "HORizontal:ACQLENGTH?;:WFMOutpre:XINcr?;:WFMOutpre:XZEro?\n", sizeof(buf));
     ret = query_response(sockfd, buf, buf);
-    sscanf(buf, "%zd;%lf;%lf", &(wavAttr->nPt), &(wavAttr->dt), &(wavAttr->t0));
+    sscanf(buf, "%lld;%lf;%lf", &(wavAttr->nPt), &(wavAttr->dt), &(wavAttr->t0));
 
     strlcpy(buf, "HORizontal:FASTframe:STATE?;:HORizontal:FASTframe:COUNt?\n", sizeof(buf));
     ret = query_response(sockfd, buf, buf);
-    sscanf(buf, "%d;%zd", &isFastFrame, &(wavAttr->nFrames));
+    sscanf(buf, "%d;%lld", &isFastFrame, &(wavAttr->nFrames));
     if(isFastFrame) {
-        printf("FastFrame mode, %zd frames per event.\n", wavAttr->nFrames);
+        printf("FastFrame mode, %lld frames per event.\n", wavAttr->nFrames);
         wavAttr->nPt *= wavAttr->nFrames;
     } else {
         wavAttr->nFrames = 0;
@@ -261,8 +261,8 @@ static int prepare_scope(int sockfd, struct waveform_attribute *wavAttr)
 
     printf("waveform_attribute:\n"
            "     chMask  = 0x%02x\n"
-           "     nPt     = %zd\n"
-           "     nFrames = %zd\n"
+           "     nPt     = %lld\n"
+           "     nFrames = %lld\n"
            "     dt      = %g\n"
            "     t0      = %g\n"
            "     ymult   = %g %g %g %g\n"
@@ -276,7 +276,7 @@ static int prepare_scope(int sockfd, struct waveform_attribute *wavAttr)
     /* data:source to selected channels */
     ret = query_response(sockfd, buf1, buf);
     /* set waveform range */
-    snprintf(buf, sizeof(buf), "data:start 1;:data:stop %zd\n", wavAttr->nPt);
+    snprintf(buf, sizeof(buf), "data:start 1;:data:stop %lld\n", wavAttr->nPt);
     ret = query_response(sockfd, buf, buf);
 
     return ret;
@@ -290,7 +290,7 @@ static void atexit_flush_files(void)
 
 static void signal_kill_handler(int sig)
 {
-    printf("\nstop time  = %zd\n", time(NULL));
+    printf("\nstop time  = %llu\n", (uint64_t)time(NULL));
     fflush(stdout);
     
     error_printf("Killed, cleaning up...\n");
@@ -298,12 +298,12 @@ static void signal_kill_handler(int sig)
     exit(EXIT_SUCCESS);
 }
 
-static size_t raw_event_size(struct hdf5io_waveform_file *wavFile)
+static uint64_t raw_event_size(struct hdf5io_waveform_file *wavFile)
 {
     char buf[BUFSIZ];
-    size_t chHeaderSize;
+    uint64_t chHeaderSize;
     
-    chHeaderSize = snprintf(buf, sizeof(buf), "#X%zd", wavFile->nPt);
+    chHeaderSize = snprintf(buf, sizeof(buf), "#X%llu", wavFile->nPt);
     return (chHeaderSize + wavFile->nPt) * wavFile->nCh + 1;
 }
 
@@ -314,8 +314,8 @@ static void *receive_and_push(void *arg)
     int sockfd, maxfd, nsel;
     fd_set rfd;
     char ibuf[BUFSIZ];
-    size_t iEvent = 0;
-    ssize_t nr, nw, rawEventSize, readTotal;
+    uint64_t iEvent = 0;
+    int64_t nr, nw, rawEventSize, readTotal;
 /*
     FILE *fp;
     if((fp=fopen("log.txt", "w"))==NULL) {
@@ -372,10 +372,10 @@ end:
 static void *pop_and_save(void *arg)
 {
     int fStartEvent, fEndEvent, fStartCh, fGetNDig, fGetRetChLen; /* flags of states */
-    size_t nDig=0, retChLen, iCh, iRetChLen=0, i, j, wavBufN;
+    uint64_t nDig=0, retChLen, iCh, iRetChLen=0, i, j, wavBufN;
     char ibuf[4*BUFSIZ], retChLenBuf[BUFSIZ];
-    size_t nr;
-    size_t iEvent = 0;
+    uint64_t nr;
+    uint64_t iEvent = 0;
     char *wavBuf;
 /*
     FILE *fp;
@@ -391,14 +391,14 @@ static void *pop_and_save(void *arg)
     fStartEvent = 1; fEndEvent = 0; fStartCh = 0; fGetNDig = 0; fGetRetChLen = 0;
     for(;;) {
         nr = fifo_pop(fifo, ibuf, sizeof(ibuf));
-//        printf("%zd popped.\n", nr);
+//        printf("%llu popped.\n", nr);
 //        fflush(stdout);
 //        write(fileno(fp), ibuf, nr);
 
         if(nr == 0) break; /* there will be nothing from the fifo any more */
         for(i=0; i<nr; i++) {
             if(fStartEvent) {
-                printf("iEvent = %zd, ", iEvent);
+                printf("iEvent = %llu, ", iEvent);
                 iCh = 0;
                 j = 0;
                 fStartEvent = 0;
@@ -408,7 +408,7 @@ static void *pop_and_save(void *arg)
                 if(ibuf[i] == ';') { /* ';' only appears in curvestream? mode */
                     continue;
                 } else if(ibuf[i] == '\n') {
-                    // debug_printf("iEvent = %zd\n", iEvent);
+                    // debug_printf("iEvent = %llu\n", iEvent);
                     printf("\n");
                     fflush(stdout);
                     fEndEvent = 0;
@@ -438,7 +438,7 @@ static void *pop_and_save(void *arg)
                         retChLenBuf[0] = ibuf[i];
                         retChLenBuf[1] = '\0';
                         nDig = atol(retChLenBuf);
-                        printf("nDig = %zd, ", nDig);
+                        printf("nDig = %llu, ", nDig);
                         
                         iRetChLen = 0;
                         fGetNDig = 0;
@@ -449,7 +449,7 @@ static void *pop_and_save(void *arg)
                         if(iRetChLen >= nDig) {
                             retChLenBuf[iRetChLen] = '\0';
                             retChLen = atol(retChLenBuf);
-                            printf("iRetChLen = %zd, retChLen = %zd, ",
+                            printf("iRetChLen = %llu, retChLen = %llu, ",
                                    iRetChLen, retChLen);
                             fStartCh = 0;
                             continue;
@@ -459,7 +459,7 @@ static void *pop_and_save(void *arg)
                     wavBuf[j] = ibuf[i];
                     j++;
                     if((j % waveformAttr.nPt) == 0 && (j!=0)) {
-                        printf("iCh = %zd, ", iCh);
+                        printf("iCh = %llu, ", iCh);
                         iCh++;
                         fStartCh = 1;
                         if(iCh >= nCh) {
@@ -483,7 +483,7 @@ int main(int argc, char **argv)
     time_t startTime, stopTime;
     int sockfd;
     pthread_t wTid;
-    size_t nWfmPerChunk = 100;
+    uint64_t nWfmPerChunk = 100;
 
     if(argc<6) {
         error_printf("%s scopeAdddress scopePort outFileName chMask(0x..) nEvents nWfmPerChunk\n",
@@ -507,7 +507,7 @@ int main(int argc, char **argv)
     if(argc>=7)
         nWfmPerChunk = atol(argv[6]);
 
-    debug_printf("outFileName: %s, chMask: 0x%02x, nCh: %zd, nEvents: %zd, nWfmPerChunk: %zd\n",
+    debug_printf("outFileName: %s, chMask: 0x%02x, nCh: %llu, nEvents: %llu, nWfmPerChunk: %llu\n",
                  outFileName, chMask, nCh, nEvents, nWfmPerChunk);
 
     sockfd = get_socket(scopeAddress, scopePort);
@@ -526,7 +526,7 @@ int main(int argc, char **argv)
 
     pthread_create(&wTid, NULL, pop_and_save, &sockfd);
 
-    printf("start time = %zd\n", startTime = time(NULL));
+    printf("start time = %llu\n", (uint64_t)(startTime = time(NULL)));
 
     receive_and_push(&sockfd);
 
@@ -534,7 +534,7 @@ int main(int argc, char **argv)
     do {
         fgets(ibuf, sizeof(ibuf), stdin);
         nwreq = strnlen(ibuf, sizeof(ibuf));
-        printf("size: %zd, %s", nwreq, ibuf);
+        printf("size: %llu, %s", nwreq, ibuf);
         fflush(stdout);
         nw = write(sockfd, ibuf, nwreq);
     } while(nw >= 0);
@@ -550,8 +550,8 @@ int main(int argc, char **argv)
     stopTime = time(NULL);
     pthread_join(wTid, NULL);
 
-    printf("\nstart time = %zd\n", startTime);
-    printf("stop time  = %zd\n", stopTime);
+    printf("\nstart time = %llu\n", (uint64_t)startTime);
+    printf("stop time  = %llu\n", (uint64_t)stopTime);
 
     fifo_close(fifo);
     close(sockfd);
