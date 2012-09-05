@@ -309,10 +309,8 @@ static size_t raw_event_size(struct hdf5io_waveform_file *wavFile)
 
 static void *receive_and_push(void *arg)
 {
-    struct timeval tv = {
-        .tv_sec = 10,
-        .tv_usec = 0,
-    };
+    struct timeval tv; /* tv should be re-initialized in the loop since select
+                          may change it after each call */
     int sockfd, maxfd, nsel;
     fd_set rfd;
     char ibuf[BUFSIZ];
@@ -332,6 +330,8 @@ static void *receive_and_push(void *arg)
     rawEventSize = raw_event_size(waveformFile);
     readTotal = 0;
     for(;;) {
+        tv.tv_sec = 10;
+        tv.tv_usec = 0;
         FD_ZERO(&rfd);
         FD_SET(sockfd, &rfd);
         maxfd = sockfd;
