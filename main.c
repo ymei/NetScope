@@ -60,7 +60,7 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "waveform.h"
+#include "common.h"
 #include "hdf5io.h"
 
 #ifdef DEBUG

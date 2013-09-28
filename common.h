@@ -1,5 +1,7 @@
-#ifndef __WAVEFORM_H__
-#define __WAVEFORM_H__
+#ifndef __COMMON_H__
+#define __COMMON_H__
+
+#define HDF5IO(name) hdf5io_ ## name
 
 #define SCOPE_NCH 4
 #define SCOPE_MEM_LENGTH_MAX 12500000 /* DPO5054 default, 12.5M points maximum */
@@ -16,4 +18,4 @@ struct waveform_attribute
     double yzero[SCOPE_NCH];
 };
 
-#endif /* __WAVEFORM_H__ */
+#endif /* __COMMON_H__ */
