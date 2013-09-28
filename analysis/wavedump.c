@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <math.h>
 
-#include "waveform.h"
+#include "common.h"
 #include "hdf5io.h"
 
 char *waveformBuf;

@@ -60,7 +60,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include "waveform.h"
+#include "common.h"
 #include "hdf5io.h"
 #include "fifo.h"
 

@@ -3,9 +3,9 @@
 
 #include <hdf5.h>
 
-#define HDF5IO_NAME_BUF_SIZE 256
+#define NAME_BUF_SIZE 256
 
-struct hdf5io_waveform_file 
+struct HDF5IO(waveform_file)
 {
     hid_t waveFid;
     uint64_t nPt;
@@ -14,7 +14,7 @@ struct hdf5io_waveform_file
     uint64_t nEvents;
 };
 
-struct hdf5io_waveform_event
+struct HDF5IO(waveform_event)
 {
     uint64_t eventId;
     /* wavBuf should point to a contiguous 2D array, mapped as
@@ -27,22 +27,24 @@ struct hdf5io_waveform_event
  * performance, n waveforms are grouped together to be put in the same
  * array, then the (n+1)th waveform is put into the next grouped
  * array, and so forth. */
-struct hdf5io_waveform_file *hdf5io_open_file(const char *fname, uint64_t nWfmPerChunk,
-                                              uint64_t nCh);
-struct hdf5io_waveform_file *hdf5io_open_file_for_read(const char *fname);
-int hdf5io_close_file(struct hdf5io_waveform_file *wavFile);
+struct HDF5IO(waveform_file) *HDF5IO(open_file)(
+    const char *fname, uint64_t nWfmPerChunk,
+    uint64_t nCh);
+struct HDF5IO(waveform_file) *HDF5IO(open_file_for_read)(const char *fname);
+int HDF5IO(close_file)(struct HDF5IO(waveform_file) *wavFile);
 /* flush also writes nEvents to the file */
-int hdf5io_flush_file(struct hdf5io_waveform_file *wavFile);
+int HDF5IO(flush_file)(struct HDF5IO(waveform_file) *wavFile);
 
-int hdf5io_write_waveform_attribute_in_file_header(struct hdf5io_waveform_file *wavFile,
-                                                   struct waveform_attribute *wavAttr);
-int hdf5io_read_waveform_attribute_in_file_header(struct hdf5io_waveform_file *wavFile,
-                                                   struct waveform_attribute *wavAttr);
-int hdf5io_write_event(struct hdf5io_waveform_file *wavFile,
-                       struct hdf5io_waveform_event *wavEvent);
-int hdf5io_read_event(struct hdf5io_waveform_file *wavFile,
-                      struct hdf5io_waveform_event *wavEvent);
-uint64_t hdf5io_get_number_of_events(struct hdf5io_waveform_file *wavFile);
+int HDF5IO(write_waveform_attribute_in_file_header)(
+    struct HDF5IO(waveform_file) *wavFile,
+    struct waveform_attribute *wavAttr);
+int HDF5IO(read_waveform_attribute_in_file_header)(
+    struct HDF5IO(waveform_file) *wavFile,
+    struct waveform_attribute *wavAttr);
+int HDF5IO(write_event)(struct HDF5IO(waveform_file) *wavFile,
+                        struct HDF5IO(waveform_event) *wavEvent);
+int HDF5IO(read_event)(struct HDF5IO(waveform_file) *wavFile,
+                       struct HDF5IO(waveform_event) *wavEvent);
+uint64_t HDF5IO(get_number_of_events)(struct HDF5IO(waveform_file) *wavFile);
 
 #endif /* __HDF5IO_H__ */
-
