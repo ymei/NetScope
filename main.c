@@ -225,9 +225,10 @@ static int prepare_scope(int sockfd, struct waveform_attribute *wavAttr)
     /* turn on selected channels */
     ret = query_response(sockfd, buf, buf);
 
-    strlcpy(buf, "HORizontal:ACQLENGTH?;:WFMOutpre:XINcr?;:WFMOutpre:XZEro?\n", sizeof(buf));
+    strlcpy(buf, "HORizontal:ACQLENGTH?;:WFMOutpre:XINcr?;:WFMOutpre:PT_Off?\n", sizeof(buf));
     ret = query_response(sockfd, buf, buf);
     sscanf(buf, "%zd;%lf;%lf", &(wavAttr->nPt), &(wavAttr->dt), &(wavAttr->t0));
+    wavAttr->t0 *= wavAttr->dt;
 
     strlcpy(buf, "HORizontal:FASTframe:STATE?;:HORizontal:FASTframe:COUNt?\n", sizeof(buf));
     ret = query_response(sockfd, buf, buf);
