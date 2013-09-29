@@ -66,12 +66,14 @@ int main(int argc, char **argv)
         hdf5io_read_event(waveformFile, &waveformEvent);
 
         for(i = 0; i < waveformFile->nPt; i++) {
-            printf("%24.16e ", waveformAttr.dt*i);
+            printf("%24.16e ", waveformAttr.dt*(i%frameSize));
             j = 0;
             for(iCh=0; iCh<SCOPE_NCH; iCh++) {
                 if((1<<iCh) & waveformAttr.chMask) {
                     printf("%24.16e ", (waveformBuf[j * waveformFile->nPt + i]
-                                        - waveformAttr.yoff[iCh]) * waveformAttr.ymult[iCh]);
+                                        - waveformAttr.yoff[iCh])
+                           * waveformAttr.ymult[iCh]
+                           + waveformAttr.yzero[iCh]);
                     j++;
                 }
             }
