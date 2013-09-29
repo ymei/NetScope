@@ -71,7 +71,9 @@ int main(int argc, char **argv)
             for(iCh=0; iCh<SCOPE_NCH; iCh++) {
                 if((1<<iCh) & waveformAttr.chMask) {
                     printf("%24.16e ", (waveformBuf[j * waveformFile->nPt + i]
-                                        - waveformAttr.yoff[iCh]) * waveformAttr.ymult[iCh]);
+                                        - waveformAttr.yoff[iCh])
+                           * waveformAttr.ymult[iCh]
+                           + waveformAttr.yzero[iCh]);
                     j++;
                 }
             }
