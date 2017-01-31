@@ -328,7 +328,12 @@ static void *receive_and_push(void *arg)
     }
 */
     sockfd = *((int*)arg);
-    strlcpy(ibuf, "CURVENext?\n", sizeof(ibuf));
+    if(nEvents > 0)
+        strlcpy(ibuf, "CURVENext?\n", sizeof(ibuf));
+    else {
+        strlcpy(ibuf, "CURVe?\n", sizeof(ibuf));
+        nEvents = 1;
+    }
     nw = write(sockfd, ibuf, strnlen(ibuf, sizeof(ibuf)));
 
     rawEventSize = raw_event_size(waveformFile);
@@ -492,6 +497,7 @@ int main(int argc, char **argv)
     if(argc<6) {
         error_printf("%s scopeAdddress scopePort outFileName chMask(0x..) nEvents nWfmPerChunk\n",
                      argv[0]);
+        error_printf("nEvents = 0 reads the already captured waveform on the scope.\n");
         return EXIT_FAILURE;
     }
     scopeAddress = argv[1];
